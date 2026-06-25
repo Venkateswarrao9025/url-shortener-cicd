@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.git/
+.github/
+tests/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.md

@@ -1,0 +1,88 @@
+# =============================================================================
+# CI/CD pipeline for the URL Shortener
+#
+# This runs automatically on every push and pull request to `main`.
+# It demonstrates the classic stages: LINT -> TEST -> BUILD -> DEPLOY.
+#
+# Each "job" runs on a fresh virtual machine. Jobs run in parallel unless
+# they declare `needs:`, which makes them wait for an earlier job to pass.
+# =============================================================================
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. CI: lint the code and run the test suite.
+  #    If this job fails, build & deploy never run -- the "quality gate".
+  # ---------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest -v
+
+  # ---------------------------------------------------------------------------
+  # 2. CD: build a Docker image and push it to GitHub Container Registry.
+  #    Only runs if `test` passed AND we're pushing to main (not on PRs).
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write  # allows pushing to ghcr.io
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # provided automatically
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Tag the image with the repo name, lowercased.
+          tags: ghcr.io/${{ github.repository }}:latest
+
+  # ---------------------------------------------------------------------------
+  # 3. Deploy. This is a placeholder you'll wire up to a real host.
+  #    See the README for how to connect Render (the easiest free option).
+  # ---------------------------------------------------------------------------
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger deploy
+        run: |
+          echo "Add your deploy step here."
+          echo "For Render: curl -X POST \"$RENDER_DEPLOY_HOOK\""
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
